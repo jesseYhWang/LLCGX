@@ -1,0 +1,781 @@
+// 
+// Loopless Assembly Code Generator for small matrice multiplications (row-wise)
+// double precision - for AMD-64 processor based computer systems,  using gcc compiler.
+// Author Dr. Jesse Y. Wang   08/15/2011
+//
+#include "stdafx.h"
+#include <iostream>
+#include <iomanip>
+#include <string>
+#include <fstream>
+using namespace std;
+//
+//############################################################################################## 
+// Define the sizes of matrices A, B, and C,  where A x B = C, and
+// A is of dimension M by K, and matrix B is of the dimension K by N, then
+// matrix C is of the dimension M by N, where M, K, N are small even integers, say less than 10.
+//
+// The output is an assembly listing file, named dgemmrMbNbK in D: (flash driver).  It is stored as a text file.
+// User can change the file type to .s file, then use gcc compiler to execute the assembly programs.
+//
+// For example,  if A is of dimension 4 by 2, and matrix B is of the dimension 2 by 8, then
+// define the values of M, K, and N as the following const statement, then run the program.
+//
+const int M = 4, K = 2, N = 8;
+
+int m = M / 4, k = K / 4, n = N / 4, m2 = M / 2, k2 = K / 2, n2 = N / 2, startAdd;
+//
+//prototypes
+//
+int gen222(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int gen422(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int gen242(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int gen224(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int gen244(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int gen424(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int gen442(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int gen444(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+
+int genfff(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int genff2(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int genf2f(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int genf22(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int gen2ff(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int gen2f2(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int gen22f(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int genttt(string A[][K], int, int, string B[][N], int, int, string C[][N], int, int, fstream &);
+int luplesCode(string A[][K], string B[][N], string C[][N], int, fstream &);
+// 
+//Global variables
+//
+string r0 = " %xmm0", r1 = " %xmm1", r2 = " %xmm2", r3 = " %xmm3";
+string r4 = " %xmm4", r5 = " %xmm5", r6 = " %xmm6", r7 = " %xmm7";
+string r8 = " %xmm8", r9 = " %xmm9", r10 = " %xmm10", r11 = " %xmm11";
+string r12 = " %xmm12", r13 = " %xmm13", r14 = " %xmm14", r15 = " %xmm15";
+
+//  Assembly Instructions	
+string push = "pushq ", popq = "popq ";
+string movq = "movq ", movl = "movl ", movhlps = "movhlps ", movlhps = "movlhps ";
+string movups = "movups ", shufps = "shufps ", mulps = "mulps ";
+string movapd = "movapd ", movupd = "movupd ", mulpd = "mulpd ";
+string movaps = "movaps ";
+string movlpd = "movlpd ", mulsd = "mulsd ", addsd = "addsd ", addps = "addps ", addpd = "addpd ";
+string movlps = "movlps ", movhps = "movhps ", movddup = "movddup ";
+string haddps = "haddps ", haddpd = "haddpd ";
+
+//	General purpose registers
+string ax = "%rdi", ax1 = "(%rdi), ", bx = "%rsi", bx1 = "(%rsi), ";
+string bpx = "%rbp", bpx1 = "(%rbp)", cx = "%rdx", cx1 = "(%rdx) ";
+string rsp = "%rsp", edx = "%edx";
+string xd8 = "$0xd8, ", x8d = "$0x8d, ", xd2 = "$0xd2, ";
+
+//  Linkage Convention
+string cstar = ".cfi_startproc ", cdco = ".cfi_def_cfa_offset  16";
+string cof = ".cfi_offset 6, -16 ", cdcr = ".cfi_def_cfa_register 6";
+string cdc = ".cfi_def_cfa  7,8 ", ce = ".cfi_endproc";
+string ret = "ret ";
+
+//  global identifiers
+string procname, LFB, LFE;
+int gpno, rmno; //gpno is group repeat number, rmno is remainder terms
+// 
+//  The following is the main control program
+// 
+int main()
+{
+	fstream coutf; char str1[5]; string sno;
+	string fileName;
+	string accMx[M][K], bccMx[K][N], cccMx[M][N];
+	int systemCode = 0, returnCode = 0;
+	if (M % 2 != 0 || K % 2 != 0 || N % 2 != 0) return 1;
+	_itoa_s(M, str1, 10);
+	sno = str1;
+	procname = "dgemmr" + sno + "b"; 
+	_itoa_s(K, str1, 10);
+	sno = str1;
+	procname = procname + sno + "b";
+	_itoa_s(N, str1, 10);
+	sno = str1;
+	procname = procname + sno;
+	// Assume that D is the flash driver, define the output file
+	fileName = "D:\\" + procname + ".s";
+	coutf.open(fileName.data(), ios::out);
+	coutf << "       .section     .text " << endl;
+	coutf << "       .align  2,0x90 "  << endl;
+	coutf << "       .globl     " << procname << endl;
+	coutf << procname << ":" << endl;
+	coutf << "       .type   "<< procname << ",  @function \n";
+	coutf << procname << ": \n";
+	coutf << LFB<< endl;
+	coutf << "       "<< cstar <<endl;
+	coutf << "       " << push <<"  " << bpx << endl;
+	coutf << "       " << cdco << endl;
+	coutf << "       " << cof << endl;
+	coutf << "       " << movq << "  " <<rsp << ",  " << bpx <<endl;
+	coutf << "       " << cdcr <<endl;
+	returnCode = luplesCode(accMx, bccMx, cccMx, systemCode,  coutf);
+	coutf << "       retq" << endl;
+	coutf << "       nop" << endl;
+	coutf << "       retq" << endl;
+	coutf << "       .align 2, 0x90" << endl;
+	coutf << "       .type   " << procname << ",@function" << endl;	
+	coutf <<"       " << popq << "   "  << bpx << endl;
+	coutf <<"       " << cdc<< endl;
+	coutf << "       " << ret <<endl;
+	coutf <<"       "<<ce << endl;
+	coutf << LFE << endl;
+	coutf <<"       " << ".size  " <<procname<<",      .-"<<procname << endl;
+	coutf.close();
+
+	cout << "DONE! " << endl;
+	return 0;
+}
+
+int luplesCode(string accMx[][K], string bccMx[][N], string cccMx[][N], int systemCode, fstream &coutf)
+{
+	char str1[5];
+	int i, j, choice, wordLength = 8, returnCode = 0;
+	//
+	// Assume that the elements of the matrix are stored row-wise (simulate C code). 
+        //
+	for (i = 0; i < M; i++)
+		for (j = 0; j < K; j++)
+		{
+			_itoa_s((i * K + j) * wordLength, str1, 16);
+			accMx[i][j] = str1;
+			accMx[i][j] = "0x" + accMx[i][j];
+		}
+	for (i = 0; i < K; i++)
+		for (j = 0; j < N; j++)
+		{
+			_itoa_s((i * N + j) * wordLength, str1, 16);
+			bccMx[i][j] = str1;
+			bccMx[i][j] = "0x" + bccMx[i][j];
+		}
+	for (i = 0; i < M; i++)
+		for (j = 0; j < N; j++)
+		{
+			_itoa_s((i * N + j) * wordLength, str1, 16);
+			cccMx[i][j] = str1;
+			cccMx[i][j] = "0x" + cccMx[i][j];
+		}
+	//
+	//Cover all possible small 8 cases.
+	//
+	if (M <= 4 && K <= 4 && N <= 4)
+	{
+		if (M % 4 == 0 && K % 4 == 0)
+		{
+			if (N % 4 == 0) choice = 444;
+			if (N % 4 != 0) choice = 442;
+		}
+
+		if (M % 4 == 0 && K % 4 != 0)
+		{
+			if (N % 4 == 0) choice = 424;
+			if (N % 4 != 0) choice = 422;
+		}
+
+		if (M % 4 != 0 && K % 4 == 0)
+		{
+			if (N % 4 == 0) choice = 244;
+			if (N % 4 != 0) choice = 242;
+		}
+		if (M % 4 != 0 && K % 4 != 0)
+		{
+			if (N % 4 == 0) choice = 224;
+			if (N % 4 != 0) choice = 222;
+		}
+
+		switch (choice)
+		{
+		case 222: gen222(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf);
+			break;
+		case 422: gen422(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf);
+			break;
+		case 242: gen242(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf);
+			break;
+		case 224: gen224(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf);
+			break;
+		case 244: gen244(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf);
+			break;
+		case 424: gen424(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf);
+			break;
+		case 442: gen442(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf);
+			break;
+		case 444: gen444(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf);
+			break;
+		default: cout << "invalid input for small values\n";
+		}
+	}
+	else 
+	//
+	// cover special cases where M,K,N are 2, or 4, but other values are greater than 4
+	//
+		if (M == 2 && K == 2 && N > 4)
+		{
+			for (int i = 0; i < n2; i++) {
+				gen222(accMx, 0, 0, bccMx, 0, i * 2, cccMx, 0, i * 2, coutf);
+			}
+		}
+		else if (M == 2 && (K % 4 == 0) && N > 4)
+		{
+			for (int j = 0; j < n2; j++) {
+				for (int i = 0; i < k; i++) {
+					gen242(accMx, 0, i * 4, bccMx, i * 4, j * 2, cccMx, 0, j * 2, coutf);
+				}
+			}
+		}
+		else if (M == 2 && (K % 4 != 0) && N > 4)
+		{
+			for (int j = 0; j < n2; j++) {
+				for (int i = 0; i < k; i++) {
+					gen242(accMx, 0, i * 4, bccMx, i * 4, j * 2, cccMx, 0, j * 2, coutf);
+				}
+				gen222(accMx, 0, k * 4, bccMx, k * 4, j * 2, cccMx, 0, j * 2, coutf);
+			}
+		}
+		else if (M == 4 && K == 2 && N > 4)
+		{
+			for (int i = 0; i < n2; i++) {
+				gen422(accMx, 0, 0, bccMx, 0, i * 2, cccMx, 0, i * 2, coutf);
+			}
+		}
+	//
+		else if (M > 4 && K == 2 && N == 2)
+		{
+			for (int i = 0; i < m2; i++) {
+				gen222(accMx, i * 2, 0, bccMx, 0, 0, cccMx, i * 2, 0, coutf);
+			}
+		}
+		else if (M > 4 && (K % 4 == 0) && N == 2)
+		{
+			for (int i = 0; i < m2; i++) {
+				gen242(accMx, i * 2, 0, bccMx, 0, 0, cccMx, i * 2, 0, coutf);
+			}
+		}
+		else if (M > 4 && (K % 4 != 0) && N == 2)
+		{ 
+			for (int i = 0; i < m2; i++) {
+				for (int j = 0; j < k; j++) {
+					gen242(accMx, i * 2, j * 4, bccMx, j * 4, 0, cccMx, i * 2, 0, coutf);
+				}
+				gen222(accMx, i * 2, k * 4, bccMx, k * 4, 0, cccMx, i * 2, 0, coutf);
+			}
+		}
+		else if (M > 4 && K == 2 && N == 4) {
+			for (int i = 0; i < m2; i++) {
+				gen224(accMx, i * 2, 0, bccMx, 0, 0, cccMx, i * 2, 0, coutf);
+			}
+		}
+		else if (M > 4 && K == 2 && N > 4)
+		{
+			for (int i = 0; i < m2; i++) {
+				for (int j = 0; j < n2; j++) {
+					gen222(accMx, i * 2, 0, bccMx, 0, j * 2, cccMx, i * 2, j * 2, coutf);
+				}
+			}
+		}
+//
+// Cover all possible larger cases
+//
+		else {
+			if (M % 4 == 0 && K % 4 == 0 && N % 4 == 0)  choice = 1;
+			if (M % 4 == 0 && K % 4 == 0 && N % 4 != 0)  choice = 2;
+			if (M % 4 == 0 && K % 4 != 0 && N % 4 == 0)  choice = 3;
+			if (M % 4 == 0 && K % 4 != 0 && N % 4 != 0)  choice = 4;
+			if (M % 4 != 0 && K % 4 == 0 && N % 4 == 0)  choice = 5;
+			if (M % 4 != 0 && K % 4 == 0 && N % 4 != 0)  choice = 6;
+			if (M % 4 != 0 && K % 4 != 0 && N % 4 == 0)  choice = 7;
+			if (M % 4 != 0 && K % 4 != 0 && N % 4 != 0)  choice = 8;
+
+			switch (choice)
+			{
+			case 1: {  genfff(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf); }
+					break;
+			case 2: {  genff2(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf); }
+					break;
+			case 3: {  genf2f(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf); }
+					break;
+			case 4: {  genf22(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf); }
+					break;
+			case 5: {  gen2ff(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf); }
+					break;
+			case 6: {  gen2f2(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf); }
+					break;
+			case 7: {  gen22f(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf); }
+					break;
+			case 8: {  genttt(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf); }
+					break;
+			default: cout << "invalid input for smaller values\n";
+			}
+		}
+		return 0;
+
+}
+//
+//  ################# bulding blocks ##############
+//
+int gen222(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int  returnCode = 0;
+	coutf << "       " << movupd << accMx[a1][a2] << ax1 << r0 << endl;
+	coutf << "       " << movupd << bccMx[b1][b2] << bx1 << r1 << endl;
+	coutf << "       " << movapd << r1 << ", " << r2 << endl;
+	coutf << "       " << movupd << bccMx[b1 + 1][b2] << bx1 << r3 << endl;
+
+	coutf << "       " << movlhps << r3 << ", " << r2 << endl;
+	coutf << "       " << movhlps << r1 << ", " << r3 << endl;
+
+	coutf << "       " << movapd << r2 << ", " << r4 << endl;
+	coutf << "       " << movapd << r3 << ", " << r5 << endl;
+
+	coutf << "       " << mulpd << r0 << ", " << r2 << endl;
+	coutf << "       " << mulpd << r0 << ", " << r3 << endl;
+	coutf << "       " << haddpd << r3 << ", " << r2 << endl;
+
+	coutf << "       " << movupd << accMx[a1 + 1][a2] << ax1 << r6 << endl;
+	coutf << "       " << mulpd << r6 << ", " << r4 << endl;
+	coutf << "       " << mulpd << r6 << ", " << r5 << endl;
+	coutf << "       " << haddpd << r5 << ", " << r4 << endl;
+	if (a2 == 0 && a2 == b1) {
+		coutf << "       " << movapd << r2 << ", " << cccMx[c1][c2] << cx1 << endl;
+		coutf << "       " << movapd << r4 << ", " << cccMx[c1 + 1][c2] << cx1 << endl;
+	}
+	else {
+		coutf << "       " << movupd << cccMx[c1][c2] << cx1 << "," << r7 << endl;
+		coutf << "       " << addpd << r7 << "," << r2 << endl;
+		coutf << "       " << movupd << r2 << "," << cccMx[c1][c2] << cx1 << endl;
+		coutf << "       " << movupd << cccMx[c1 + 1][c2] << cx1 << "," << r7 << endl;
+		coutf << "       " << addpd << r7 << "," << r4 << endl;
+		coutf << "       " << movupd << r4 << "," << cccMx[c1 + 1][c2] << cx1 << endl;
+	}
+
+	return returnCode;
+}
+int gen422(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int  returnCode = 0;
+	coutf << "       " << movupd << accMx[a1][a2] << ax1 << r0 << endl;
+	coutf << "       " << movupd << bccMx[b1][b2] << bx1 << r1 << endl;
+	coutf << "       " << movapd << r1 << ", " << r2 << endl;
+	coutf << "       " << movupd << bccMx[b1 + 1][b2] << bx1 << r3 << endl;
+
+	coutf << "       " << movlhps << r3 << ", " << r2 << endl;
+	coutf << "       " << movhlps << r1 << ", " << r3 << endl;
+
+	coutf << "       " << movapd << r2 << ", " << r4 << endl;
+	coutf << "       " << movapd << r3 << ", " << r5 << endl;
+	coutf << "       " << movapd << r2 << ", " << r6 << endl;
+	coutf << "       " << movapd << r3 << ", " << r7 << endl;
+
+	coutf << "       " << mulpd << r0 << ", " << r2 << endl;
+	coutf << "       " << mulpd << r0 << ", " << r3 << endl;
+	coutf << "       " << haddpd << r3 << ", " << r2 << endl;
+
+	coutf << "       " << movupd << accMx[a1 + 1][a2] << ax1 << r0 << endl;
+	coutf << "       " << mulpd << r0 << ", " << r4 << endl;
+	coutf << "       " << mulpd << r0 << ", " << r5 << endl;
+	coutf << "       " << haddpd << r5 << ", " << r4 << endl;
+	if (a2 == 0 && a2 == b1) {
+		coutf << "       " << movapd << r2 << ", " << cccMx[c1][c2] << cx1 << endl;
+		coutf << "       " << movapd << r4 << ", " << cccMx[c1 + 1][c2] << cx1 << endl;
+	}
+	else {
+		coutf << "       " << movupd << cccMx[c1][c2] << cx1 << "," << r5 << endl;
+		coutf << "       " << addpd << r5 << "," << r2 << endl;
+		coutf << "       " << movapd << r2 << "," << cccMx[c1][c2] << cx1 << endl;
+		coutf << "       " << movupd << cccMx[c1 + 1][c2] << cx1 << "," << r5 << endl;
+		coutf << "       " << addpd << r5 << "," << r4 << endl;
+		coutf << "       " << movapd << r4 << "," << cccMx[c1 + 1][c2] << cx1 << endl;
+	}
+	//
+	coutf << "       " << movupd << accMx[a1 + 2][a2] << ax1 << r0 << endl;
+
+
+	coutf << "       " << movapd << r6 << ", " << r2 << endl;
+	coutf << "       " << movapd << r7 << ", " << r3 << endl;
+
+	coutf << "       " << mulpd << r0 << ", " << r2 << endl;
+	coutf << "       " << mulpd << r0 << ", " << r3 << endl;
+	coutf << "       " << haddpd << r3 << ", " << r2 << endl;
+
+	coutf << "       " << movupd << accMx[a1 + 3][a2] << ax1 << r4 << endl;
+	coutf << "       " << mulpd << r4 << ", " << r6 << endl;
+	coutf << "       " << mulpd << r4 << ", " << r7 << endl;
+	coutf << "       " << haddpd << r7 << ", " << r6 << endl;
+	if (a2 == 0 && a2 == b1) {
+		coutf << "       " << movapd << r2 << ", " << cccMx[c1 + 2][c2] << cx1 << endl;
+		coutf << "       " << movapd << r6 << ", " << cccMx[c1 + 3][c2] << cx1 << endl;
+	}
+	else {
+		coutf << "       " << movupd << cccMx[c1 + 2][c2] << cx1 << "," << r7 << endl;
+		coutf << "       " << addpd << r7 << "," << r2 << endl;
+		coutf << "       " << movapd << r2 << "," << cccMx[c1 + 2][c2] << cx1 << endl;
+		coutf << "       " << movupd << cccMx[c1 + 3][c2] << cx1 << "," << r7 << endl;
+		coutf << "       " << addpd << r7 << "," << r6 << endl;
+		coutf << "       " << movapd << r6 << "," << cccMx[c1 + 3][c2] << cx1 << endl;
+	}
+
+	return returnCode;
+}
+
+int gen242(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int returnCode = 0;
+
+	coutf << "       " << movupd << accMx[a1][a2] << ax1 << r0 << endl;
+	coutf << "       " << movupd << bccMx[b1][b2] << bx1 << r1 << endl;
+	coutf << "       " << movapd << r1 << ", " << r2 << endl;
+	coutf << "       " << movupd << bccMx[b1 + 1][b2] << bx1 << r3 << endl;
+
+	coutf << "       " << movlhps << r3 << ", " << r2 << endl;
+	coutf << "       " << movhlps << r1 << ", " << r3 << endl;
+
+	coutf << "       " << movapd << r2 << ", " << r4 << endl;
+	coutf << "       " << movapd << r3 << ", " << r5 << endl;
+
+	coutf << "       " << mulpd << r0 << ", " << r2 << endl;
+	coutf << "       " << mulpd << r0 << ", " << r3 << endl;
+	coutf << "       " << haddpd << r3 << ", " << r2 << endl;
+
+	coutf << "       " << movupd << accMx[a1 + 1][a2] << ax1 << r6 << endl;
+	coutf << "       " << mulpd << r6 << ", " << r4 << endl;
+	coutf << "       " << mulpd << r6 << ", " << r5 << endl;
+	coutf << "       " << haddpd << r5 << ", " << r4 << endl;
+	//
+	coutf << "       " << movupd << accMx[a1][a2 + 2] << ax1 << r0 << endl;
+	coutf << "       " << movupd << bccMx[b1 + 2][b2] << bx1 << r1 << endl;
+	coutf << "       " << movapd << r1 << ", " << r3 << endl;
+	coutf << "       " << movupd << bccMx[b1 + 3][b2] << bx1 << r5 << endl;
+
+	coutf << "       " << movlhps << r5 << ", " << r3 << endl;
+	coutf << "       " << movhlps << r1 << ", " << r5 << endl;
+
+	coutf << "       " << movapd << r3 << ", " << r6 << endl;
+	coutf << "       " << movapd << r5 << ", " << r7 << endl;
+
+	coutf << "       " << mulpd << r0 << ", " << r3 << endl;
+	coutf << "       " << mulpd << r0 << ", " << r5 << endl;
+	coutf << "       " << haddpd << r5 << ", " << r3 << endl;
+	coutf << "       " << addpd << r3 << ", " << r2 << endl;
+
+	coutf << "       " << movupd << accMx[a1 + 1][a2 + 2] << ax1 << r0 << endl;
+	coutf << "       " << mulpd << r0 << ", " << r6 << endl;
+	coutf << "       " << mulpd << r0 << ", " << r7 << endl;
+	coutf << "       " << haddpd << r7 << ", " << r6 << endl;
+	coutf << "       " << addpd << r6 << ", " << r4 << endl;
+
+	if (a2 == 0 && a2 == b1) {
+		coutf << "       " << movapd << r2 << ", " << cccMx[c1][c2] << cx1 << endl;
+		coutf << "       " << movapd << r4 << ", " << cccMx[c1 + 1][c2] << cx1 << endl;
+	}
+	else {
+		coutf << "       " << movupd << cccMx[c1][c2] << cx1 << "," << r7 << endl;
+		coutf << "       " << addpd << r7 << "," << r2 << endl;
+		coutf << "       " << movapd << r2 << "," << cccMx[c1][c2] << cx1 << endl;
+		coutf << "       " << movupd << cccMx[c1 + 1][c2] << cx1 << "," << r7 << endl;
+		coutf << "       " << addpd << r7 << "," << r4 << endl;
+		coutf << "       " << movapd << r4 << "," << cccMx[c1 + 1][c2] << cx1 << endl;
+	}
+	return returnCode;
+}
+
+
+int gen224(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int  returnCode = 0;
+
+	coutf << "       " << movupd << accMx[a1][a2] << ax1 << r0 << endl;
+	coutf << "       " << movupd << bccMx[b1][b2] << bx1 << r1 << endl;
+	coutf << "       " << movapd << r1 << ", " << r2 << endl;
+	coutf << "       " << movupd << bccMx[b1 + 1][b2] << bx1 << r3 << endl;
+
+	coutf << "       " << movlhps << r3 << ", " << r2 << endl;
+	coutf << "       " << movhlps << r1 << ", " << r3 << endl;
+
+	coutf << "       " << movapd << r2 << ", " << r4 << endl;
+	coutf << "       " << movapd << r3 << ", " << r5 << endl;
+
+	coutf << "       " << mulpd << r0 << ", " << r2 << endl;
+	coutf << "       " << mulpd << r0 << ", " << r3 << endl;
+	coutf << "       " << haddpd << r3 << ", " << r2 << endl;
+
+	coutf << "       " << movupd << accMx[a1 + 1][a2] << ax1 << r6 << endl;
+	coutf << "       " << mulpd << r6 << ", " << r4 << endl;
+	coutf << "       " << mulpd << r6 << ", " << r5 << endl;
+	coutf << "       " << haddpd << r5 << ", " << r4 << endl;
+	if (a2 == 0 && a2 == b1) {
+		coutf << "       " << movapd << r2 << ", " << cccMx[c1][c2] << cx1 << endl;
+		coutf << "       " << movapd << r4 << ", " << cccMx[c1 + 1][c2] << cx1 << endl;
+	}
+	else {
+		coutf << "       " << movupd << cccMx[c1][c2] << cx1 << "," << r7 << endl;
+		coutf << "       " << addpd << r7 << "," << r2 << endl;
+		coutf << "       " << movapd << r2 << "," << cccMx[c1][c2] << cx1 << endl;
+		coutf << "       " << movupd << cccMx[c1 + 1][c2] << cx1 << "," << r7 << endl;
+		coutf << "       " << addpd << r7 << "," << r4 << endl;
+		coutf << "       " << movapd << r4 << "," << cccMx[c1 + 1][c2] << cx1 << endl;
+	}
+
+	coutf << "       " << movupd << bccMx[b1][b2 + 2] << bx1 << r1 << endl;
+	coutf << "       " << movapd << r1 << ", " << r2 << endl;
+	coutf << "       " << movupd << bccMx[b1 + 1][b2 + 2] << bx1 << r3 << endl;
+
+	coutf << "       " << movlhps << r3 << ", " << r2 << endl;
+	coutf << "       " << movhlps << r1 << ", " << r3 << endl;
+
+	coutf << "       " << movapd << r2 << ", " << r4 << endl;
+	coutf << "       " << movapd << r3 << ", " << r5 << endl;
+
+	coutf << "       " << mulpd << r0 << ", " << r2 << endl;
+	coutf << "       " << mulpd << r0 << ", " << r3 << endl;
+	coutf << "       " << haddpd << r3 << ", " << r2 << endl;
+
+
+	coutf << "       " << mulpd << r6 << ", " << r4 << endl;
+	coutf << "       " << mulpd << r6 << ", " << r5 << endl;
+	coutf << "       " << haddpd << r5 << ", " << r4 << endl;
+	if (a2 == 0 && a2 == b1) {
+		coutf << "       " << movapd << r2 << ", " << cccMx[c1][c2 + 2] << cx1 << endl;
+		coutf << "       " << movapd << r4 << ", " << cccMx[c1 + 1][c2 + 2] << cx1 << endl;
+	}
+	else {
+		coutf << "       " << movupd << cccMx[c1][c2 + 2] << cx1 << "," << r7 << endl;
+		coutf << "       " << addpd << r7 << "," << r2 << endl;
+		coutf << "       " << movapd << r2 << "," << cccMx[c1][c2 + 2] << cx1 << endl;
+		coutf << "       " << movupd << cccMx[c1 + 1][c2 + 2] << cx1 << "," << r7 << endl;
+		coutf << "       " << addpd << r7 << "," << r4 << endl;
+		coutf << "       " << movapd << r4 << "," << cccMx[c1 + 1][c2 + 2] << cx1 << endl;
+	}
+
+	return returnCode;
+}
+
+int gen244(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int errCode = 0;
+
+	gen242(accMx, a1, a2, bccMx, b1, b2, cccMx, c1, c2, coutf);
+	gen242(accMx, a1, a2, bccMx, b1, b2 + 2, cccMx, c1, c2 + 2, coutf);
+
+	return errCode;
+}
+
+int gen424(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int errCode = 0;
+
+	gen422(accMx, a1, a2, bccMx, b1, b2, cccMx, c1, c2, coutf);
+	gen422(accMx, a1, a2, bccMx, b1, b2 + 2, cccMx, c1, c2 + 2, coutf);
+
+	return errCode;
+}
+
+int gen442(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int  returnCode = 0;
+
+	gen242(accMx, a1, a2, bccMx, b1, b2, cccMx, c1, c2, coutf);
+	gen242(accMx, a1 + 2, a2, bccMx, b1, b2, cccMx, c1 + 2, c2, coutf);
+
+	return returnCode;
+}
+
+
+int gen444(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int returnCode = 0;
+
+	gen442(accMx, a1, a2, bccMx, b1, b2, cccMx, c1, c2, coutf);
+	gen442(accMx, a1, a2, bccMx, b1, b2 + 2, cccMx, c1, c2 + 2, coutf);
+
+	return returnCode;
+}
+//
+// ################### construct general cases ###############
+//
+
+int genfff(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int returnCode = 0;
+	for (int i = 0; i < m; i++) {
+		for (int j = 0; j < n; j++) {
+			for (int l = 0; l < k; l++) {
+				gen444(accMx, i * 4, l * 4, bccMx, l * 4, j * 4, cccMx, i * 4, j * 4, coutf);
+			}
+		}
+	}
+	return returnCode;
+}
+
+int genff2(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int returnCode = 0;
+	genfff(accMx, 0, 0, bccMx, 0, 0, cccMx, 0, 0, coutf);
+	for (int i = 0; i < m; i++) {
+		for (int j = 0; j < k; j++) {
+			gen442(accMx, i * 4, j * 4, bccMx, j * 4, n * 4, cccMx, i * 4, n * 4, coutf);
+		}
+	}
+	return returnCode;
+}
+
+
+int genf2f(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int returnCode = 0;
+	for (int i = 0; i < m; i++) {
+		for (int j = 0; j < n; j++) {
+			for (int l = 0; l < k; l++) {
+				gen444(accMx, i * 4, l * 4, bccMx, l * 4, j * 4, cccMx, i * 4, j * 4, coutf);
+			}
+			gen424(accMx, i * 4, k * 4, bccMx, k * 4, j * 4, cccMx, i * 4, j * 4, coutf);
+		}
+	}
+	return returnCode;
+}
+
+int genf22(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int returnCode = 0;
+	for (int i = 0; i < m; i++) {
+		for (int j = 0; j < n; j++) {
+			for (int l = 0; l < k; l++) {
+				gen444(accMx, i * 4, l * 4, bccMx, l * 4, j * 4, cccMx, i * 4, j * 4, coutf);
+			}
+			gen424(accMx, i * 4, k * 4, bccMx, k * 4, j * 4, cccMx, i * 4, j * 4, coutf);
+		}
+	}
+	for (int i = 0; i < m; i++) {
+		for (int j = 0; j < k; j++) {
+			gen442(accMx, i * 4, j * 4, bccMx, j * 4, n * 4, cccMx, i * 4, n * 4, coutf);
+		}
+		gen422(accMx, i * 4, k * 4, bccMx, k * 4, n * 4, cccMx, i * 4, n * 4, coutf);
+	}
+	return returnCode;
+}
+
+int gen2ff(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int returnCode = 0;
+
+	for (int i = 0; i < m; i++) {
+		for (int j = 0; j < n; j++) {
+			for (int l = 0; l < k; l++) {
+				gen444(accMx, i * 4, l * 4, bccMx, l * 4, j * 4, cccMx, i * 4, j * 4, coutf);
+			}
+		}
+	}
+	for (int j = 0; j < n; j++) {
+		for (int l = 0; l < k; l++) {
+			gen244(accMx, m * 4, l * 4, bccMx, l * 4, j * 4, cccMx, m * 4, j * 4, coutf);
+		}
+	}
+	return returnCode;
+}
+
+int gen2f2(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int returnCode = 0;
+	for (int i = 0; i < m; i++) {
+		for (int j = 0; j < n; j++) {
+			for (int l = 0; l < k; l++) {
+				gen444(accMx, i * 4, l * 4, bccMx, l * 4, j * 4, cccMx, i * 4, j * 4, coutf);
+			}
+		}
+	}
+	for (int i = 0; i < m; i++) {
+		for (int l = 0; l < k; l++) {
+			gen442(accMx, i * 4, l * 4, bccMx, l * 4, n * 4, cccMx, i * 4, n * 4, coutf);
+		}
+	}
+
+	for (int j = 0; j < n; j++) {
+		for (int l = 0; l < k; l++) {
+			gen244(accMx, m * 4, l * 4, bccMx, l * 4, j * 4, cccMx, m * 4, j * 4, coutf);
+		}
+	}
+	for (int l = 0; l < k; l++) {
+		gen242(accMx, m * 4, l * 4, bccMx, l * 4, n * 4, cccMx, m * 4, n * 4, coutf);
+	}
+	return returnCode;
+}
+
+int gen22f(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int returnCode = 0;
+	for (int i = 0; i < m; i++) {
+		for (int j = 0; j < n; j++) {
+			for (int l = 0; l < k; l++) {
+				gen444(accMx, i * 4, l * 4, bccMx, l * 4, j * 4, cccMx, i * 4, j * 4, coutf);
+			}
+			gen424(accMx, i * 4, k * 4, bccMx, k * 4, j * 4, cccMx, i * 4, j * 4, coutf);
+		}
+	}
+	for (int i = 0; i < n; i++) {
+		for (int j = 0; j < k; j++) {
+			gen244(accMx, m * 4, j * 4, bccMx, j * 4, i * 4, cccMx, m * 4, i * 4, coutf);
+		}
+		gen224(accMx, m * 4, k * 4, bccMx, k * 4, i * 4, cccMx, m * 4, i * 4, coutf);
+	}
+	return returnCode;
+}
+
+int genttt(string accMx[][K], int a1, int a2, string bccMx[][N], int b1, int b2, string cccMx[][N], int c1, int c2, fstream &coutf)
+{
+	int  returnCode = 0;
+
+	for (int i = 0; i < m; i++) {
+		for (int j = 0; j < n; j++) {
+			for (int l = 0; l < k; l++) {
+				gen444(accMx, i * 4, l * 4, bccMx, l * 4, j * 4, cccMx, i * 4, j * 4, coutf);
+			}
+			gen424(accMx, i * 4, k * 4, bccMx, k * 4, j * 4, cccMx, i * 4, j * 4, coutf);
+		}
+	}
+	cout << " m " << m << " k " << k << endl;
+	for (int i = 0; i < m; i++) {
+		for (int j = 0; j < k; j++) {
+	//		cout << " j " << j << " k " << k << endl;
+			gen442(accMx, i * 4, j * 4, bccMx, j * 4, n * 4, cccMx, i * 4, n * 4, coutf);
+		}
+		gen422(accMx, i * 4, k * 4, bccMx, k * 4, n * 4, cccMx, i * 4, n * 4, coutf);
+	}
+	cout << " n " << n << " k " << k << endl;
+	for (int i = 0; i < n; i++) {
+		for (int j = 0; j < k; j++) {
+			cout << " j " << j << " k " << k << endl;
+			gen244(accMx, m * 4, j * 4, bccMx, j * 4, i * 4, cccMx, m * 4, i * 4, coutf);
+		}
+		gen224(accMx, m * 4, k * 4, bccMx, k * 4, i * 4, cccMx, m * 4, i * 4, coutf);
+	}
+
+	for (int j = 0; j < k; j++) {
+		gen242(accMx, m * 4, j * 4, bccMx, j * 4, n * 4, cccMx, m * 4, n * 4, coutf);
+	}
+	gen222(accMx, m * 4, k * 4, bccMx, k * 4, n * 4, cccMx, m * 4, n * 4, coutf);
+
+
+	return returnCode;
+}
+
+/* *********************  REFERENCES **************************
+
+The development of this work was conducted on a computer sever with AMD K10 processor 
+running under Linux operating system at the Argonne National Laboratory in 2011.  
+
+The hardware has the following computation speeds: 1) 4 double floating points per cycle, 
+maximum processing 2.5 GHz/sec, and 2) a maximum execution speed of 10 Gflops/sec.
+
+The following AMD K10 processor manuals were used to produce the code generator and the assembly codes:
+
+(1) AMD64 Architecture Programmer’s Manual Volume 1: Application Programming
+(2) AMD64 Architecture Programmer’s Manual Volume 4: 128-Bit Media 2Instructions
+(3) Software Optimization Guide for AMD Athlon 64 and AMD Opteron Processors Rev 3.06
+(4) BIOS and Kernel Developer's Guide (BKDG) For AMD Family 10h Processors
+(5) Software Optimization Guide for AMD Family 10h Processors
+(6) Family 10h AMD Phenom Processor Product Data Sheet
+
+ 
+*/
