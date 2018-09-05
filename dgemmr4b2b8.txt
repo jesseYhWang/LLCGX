@@ -1,0 +1,148 @@
+       .section     .text 
+       .align  2,0x90 
+       .globl     dgemmr4b2b8
+dgemmr4b2b8:
+       .type   dgemmr4b2b8,  @function 
+dgemmr4b2b8: 
+
+       .cfi_startproc 
+       pushq   %rbp
+       .cfi_def_cfa_offset  16
+       .cfi_offset 6, -16 
+       movq   %rsp,  %rbp
+       .cfi_def_cfa_register 6
+       movupd 0x0(%rdi),  %xmm0
+       movupd 0x0(%rsi),  %xmm1
+       movapd  %xmm1,  %xmm2
+       movupd 0x40(%rsi),  %xmm3
+       movlhps  %xmm3,  %xmm2
+       movhlps  %xmm1,  %xmm3
+       movapd  %xmm2,  %xmm4
+       movapd  %xmm3,  %xmm5
+       movapd  %xmm2,  %xmm6
+       movapd  %xmm3,  %xmm7
+       mulpd  %xmm0,  %xmm2
+       mulpd  %xmm0,  %xmm3
+       haddpd  %xmm3,  %xmm2
+       movupd 0x10(%rdi),  %xmm0
+       mulpd  %xmm0,  %xmm4
+       mulpd  %xmm0,  %xmm5
+       haddpd  %xmm5,  %xmm4
+       movapd  %xmm2, 0x0(%rdx) 
+       movapd  %xmm4, 0x40(%rdx) 
+       movupd 0x20(%rdi),  %xmm0
+       movapd  %xmm6,  %xmm2
+       movapd  %xmm7,  %xmm3
+       mulpd  %xmm0,  %xmm2
+       mulpd  %xmm0,  %xmm3
+       haddpd  %xmm3,  %xmm2
+       movupd 0x30(%rdi),  %xmm4
+       mulpd  %xmm4,  %xmm6
+       mulpd  %xmm4,  %xmm7
+       haddpd  %xmm7,  %xmm6
+       movapd  %xmm2, 0x80(%rdx) 
+       movapd  %xmm6, 0xc0(%rdx) 
+       movupd 0x0(%rdi),  %xmm0
+       movupd 0x10(%rsi),  %xmm1
+       movapd  %xmm1,  %xmm2
+       movupd 0x50(%rsi),  %xmm3
+       movlhps  %xmm3,  %xmm2
+       movhlps  %xmm1,  %xmm3
+       movapd  %xmm2,  %xmm4
+       movapd  %xmm3,  %xmm5
+       movapd  %xmm2,  %xmm6
+       movapd  %xmm3,  %xmm7
+       mulpd  %xmm0,  %xmm2
+       mulpd  %xmm0,  %xmm3
+       haddpd  %xmm3,  %xmm2
+       movupd 0x10(%rdi),  %xmm0
+       mulpd  %xmm0,  %xmm4
+       mulpd  %xmm0,  %xmm5
+       haddpd  %xmm5,  %xmm4
+       movapd  %xmm2, 0x10(%rdx) 
+       movapd  %xmm4, 0x50(%rdx) 
+       movupd 0x20(%rdi),  %xmm0
+       movapd  %xmm6,  %xmm2
+       movapd  %xmm7,  %xmm3
+       mulpd  %xmm0,  %xmm2
+       mulpd  %xmm0,  %xmm3
+       haddpd  %xmm3,  %xmm2
+       movupd 0x30(%rdi),  %xmm4
+       mulpd  %xmm4,  %xmm6
+       mulpd  %xmm4,  %xmm7
+       haddpd  %xmm7,  %xmm6
+       movapd  %xmm2, 0x90(%rdx) 
+       movapd  %xmm6, 0xd0(%rdx) 
+       movupd 0x0(%rdi),  %xmm0
+       movupd 0x20(%rsi),  %xmm1
+       movapd  %xmm1,  %xmm2
+       movupd 0x60(%rsi),  %xmm3
+       movlhps  %xmm3,  %xmm2
+       movhlps  %xmm1,  %xmm3
+       movapd  %xmm2,  %xmm4
+       movapd  %xmm3,  %xmm5
+       movapd  %xmm2,  %xmm6
+       movapd  %xmm3,  %xmm7
+       mulpd  %xmm0,  %xmm2
+       mulpd  %xmm0,  %xmm3
+       haddpd  %xmm3,  %xmm2
+       movupd 0x10(%rdi),  %xmm0
+       mulpd  %xmm0,  %xmm4
+       mulpd  %xmm0,  %xmm5
+       haddpd  %xmm5,  %xmm4
+       movapd  %xmm2, 0x20(%rdx) 
+       movapd  %xmm4, 0x60(%rdx) 
+       movupd 0x20(%rdi),  %xmm0
+       movapd  %xmm6,  %xmm2
+       movapd  %xmm7,  %xmm3
+       mulpd  %xmm0,  %xmm2
+       mulpd  %xmm0,  %xmm3
+       haddpd  %xmm3,  %xmm2
+       movupd 0x30(%rdi),  %xmm4
+       mulpd  %xmm4,  %xmm6
+       mulpd  %xmm4,  %xmm7
+       haddpd  %xmm7,  %xmm6
+       movapd  %xmm2, 0xa0(%rdx) 
+       movapd  %xmm6, 0xe0(%rdx) 
+       movupd 0x0(%rdi),  %xmm0
+       movupd 0x30(%rsi),  %xmm1
+       movapd  %xmm1,  %xmm2
+       movupd 0x70(%rsi),  %xmm3
+       movlhps  %xmm3,  %xmm2
+       movhlps  %xmm1,  %xmm3
+       movapd  %xmm2,  %xmm4
+       movapd  %xmm3,  %xmm5
+       movapd  %xmm2,  %xmm6
+       movapd  %xmm3,  %xmm7
+       mulpd  %xmm0,  %xmm2
+       mulpd  %xmm0,  %xmm3
+       haddpd  %xmm3,  %xmm2
+       movupd 0x10(%rdi),  %xmm0
+       mulpd  %xmm0,  %xmm4
+       mulpd  %xmm0,  %xmm5
+       haddpd  %xmm5,  %xmm4
+       movapd  %xmm2, 0x30(%rdx) 
+       movapd  %xmm4, 0x70(%rdx) 
+       movupd 0x20(%rdi),  %xmm0
+       movapd  %xmm6,  %xmm2
+       movapd  %xmm7,  %xmm3
+       mulpd  %xmm0,  %xmm2
+       mulpd  %xmm0,  %xmm3
+       haddpd  %xmm3,  %xmm2
+       movupd 0x30(%rdi),  %xmm4
+       mulpd  %xmm4,  %xmm6
+       mulpd  %xmm4,  %xmm7
+       haddpd  %xmm7,  %xmm6
+       movapd  %xmm2, 0xb0(%rdx) 
+       movapd  %xmm6, 0xf0(%rdx) 
+       retq
+       nop
+       retq
+       .align 2, 0x90
+       .type   dgemmr4b2b8,@function
+       popq    %rbp
+       .cfi_def_cfa  7,8 
+       ret 
+       .cfi_endproc
+
+       .size  dgemmr4b2b8,      .-dgemmr4b2b8
